@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Runtime output — all pipeline data files are local only
+output/raw/
+output/clean/
+output/scored/
+output/intelligence/
+output/memos/
+output/reports/
+
+# MAHARERA session tokens (contain live auth cookies — never commit)
+config/maharera_token.json
+config/maharera_browser_state.json
+config/maharera_session.json
+
+# Logs
+logs/*.log
+logs/*.log.*
+
+# Environment secrets
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# macOS
+.DS_Store
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/

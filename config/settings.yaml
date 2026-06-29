@@ -1,0 +1,37 @@
+scraper:
+  base_url: "https://maharera.maharashtra.gov.in/projects-search-result"
+  detail_base_url: "https://maharerait.maharashtra.gov.in/public/project/view"
+  start_page: 1
+  end_page: null          # null = scrape all pages; set to 2 for testing
+  request_timeout: 30
+  rate_limit_delay: 1.5   # seconds between each HTTP request
+  max_retries: 3
+  retry_backoff_factor: 2.0
+  user_agent: "REDO-AIF-DataCollector/1.0 (internal research tool)"
+  checkpoint_interval: 500
+
+storage:
+  raw_output_dir: "output/raw"
+  json_enabled: true
+  csv_enabled: true
+
+cleaner:
+  raw_input_dir: "output/raw"
+  clean_output_dir: "output/clean"
+  json_enabled: true
+  csv_enabled: true
+  # Date formats to attempt in order; first match wins
+  date_formats:
+    - "%Y-%m-%d"
+    - "%d/%m/%Y"
+    - "%d-%m-%Y"
+    - "%Y-%m-%dT%H:%M:%S"
+    - "%Y-%m-%dT%H:%M:%S.%f"
+
+logging:
+  log_dir: "logs"
+  log_file: "scraper.log"
+  log_level: "INFO"
+  console_enabled: true
+  max_bytes: 10485760   # 10 MB
+  backup_count: 5

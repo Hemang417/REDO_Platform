@@ -1,0 +1,72 @@
+scoring:
+  weights:
+    construction_progress: 0.3
+    delay_severity: 0.25
+    extension_history: 0.15
+    project_viability: 0.2
+    location: 0.1
+  construction_progress:
+    optimal_min: 60.0
+    optimal_max: 80.0
+    score_below_optimal: 0.5
+    score_in_optimal: 1.0
+    score_above_optimal: 0.4
+    score_complete: 0.1
+  delay_severity:
+    no_delay_score: 0.2
+    moderate_delay_min_days: 180
+    moderate_delay_max_days: 730
+    moderate_delay_score: 1.0
+    severe_delay_max_days: 1095
+    severe_delay_score: 0.6
+    extreme_delay_score: 0.15
+  extension_history:
+    scores:
+      0: 0.3
+      1: 0.8
+      2: 1.0
+      3: 0.5
+    four_plus_score: 0.2
+  project_viability:
+    active_score: 1.0
+    completed_score: 0.2
+    lapsed_score: 0.0
+    deregistered_score: 0.0
+    abeyance_score: 0.1
+    unknown_score: 0.5
+  location:
+    tier1_districts:
+    - Mumbai
+    - Mumbai Suburban
+    - Thane
+    - Pune
+    - Navi Mumbai
+    tier2_districts:
+    - Raigad
+    - Nashik
+    - Nagpur
+    - Aurangabad
+    - Palghar
+    - Ratnagiri
+    tier1_score: 1.0
+    tier2_score: 0.65
+    other_score: 0.35
+developer_scoring:
+  weights:
+    completion_rate: 0.35
+    on_time_rate: 0.3
+    no_lapse_rate: 0.2
+    portfolio_size: 0.15
+  completion_rate:
+    excellent_threshold: 0.8
+    poor_threshold: 0.3
+  on_time_rate:
+    excellent_threshold: 0.7
+    poor_threshold: 0.1
+  no_lapse_rate:
+    excellent_threshold: 0.95
+    poor_threshold: 0.6
+  portfolio_size:
+    large_threshold: 10
+    small_threshold: 1
+    single_score: 0.3
