@@ -71,6 +71,14 @@ def build_project_brief(
         f"Is Deregistered     : {_fmt(project.is_deregistered)}",
         f"Is In Abeyance      : {_fmt(project.is_abeyance)}",
         "",
+        "LITIGATION / LEGAL",
+        "-" * 40,
+        f"MAHARERA Litigation Present : {_fmt(project.is_litigation_present)}",
+        f"Litigation Declared         : {_fmt(project.is_litigation_declared)}",
+        f"MAHARERA Complaint Count    : {_fmt(project.complaint_count)}",
+        f"Criminal Cases vs Promoter  : {_fmt(project.is_criminal_cases)}",
+        "(Note: NCLT/IBC tribunal filings are not captured in MAHARERA data.)",
+        "",
     ]
 
     # ------------------------------------------------------------------ Progress

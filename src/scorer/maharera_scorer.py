@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from src.config.loader import ScoringConfig
+from src.config.loader import HardFilterConfig, ScoringConfig
 from src.models.clean_project import CleanProject
 from src.models.scored_project import ScoredProject
 from src.scorer.rules import (
@@ -40,6 +40,28 @@ class MahareraScorer:
     def __init__(self, config: ScoringConfig) -> None:
         self._cfg = config
 
+    def _fails_hard_filter(self, project: CleanProject) -> bool:
+        """Return True if the project should be hard-excluded (score forced to 0)."""
+        hf: HardFilterConfig = self._cfg.hard_filters
+
+        progress = project.construction_progress_pct
+        if progress is not None:
+            if progress < hf.construction_progress_min or progress > hf.construction_progress_max:
+                return True
+
+        if hf.exclude_lapsed and project.is_lapsed is True:
+            return True
+        if hf.exclude_deregistered and project.is_deregistered is True:
+            return True
+        if hf.exclude_abeyance and project.is_abeyance is True:
+            return True
+        if hf.exclude_if_litigation and project.is_litigation_present:
+            return True
+        if hf.exclude_if_criminal_cases and project.is_criminal_cases:
+            return True
+
+        return False
+
     def score(self, project: CleanProject) -> ScoredProject:
         """Apply all rules and return a ScoredProject.
 
@@ -48,6 +70,21 @@ class MahareraScorer:
         """
         cfg = self._cfg
         w = cfg.weights
+
+        # Hard filters: projects failing these criteria score 0 immediately
+        if self._fails_hard_filter(project):
+            logger.debug(
+                "Hard-filtered project_id=%s reg=%s",
+                project.project_id,
+                project.registration_number,
+            )
+            zero_factors = {k: 0.0 for k in _FACTOR_NAMES}
+            return ScoredProject(
+                **project.model_dump(),
+                opportunity_score=0.0,
+                factor_scores=zero_factors,
+                location_tier="unknown",
+            )
 
         # Compute per-factor scores [0.0, 1.0]
         cp_score = score_construction_progress(

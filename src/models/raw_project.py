@@ -72,6 +72,13 @@ class RawProject(BaseModel):
     construction_progress_pct: Optional[str] = None  # average across activities, e.g. "67.5"
     extension_count: Optional[str] = None             # e.g. "2"
 
+    # Litigation / legal flags (from MAHARERA getProjectLitigationDetails,
+    # getComplaintDetailsByProjectId, and promoter isAnyCriminalCases endpoints)
+    is_litigation_present: Optional[str] = None   # "0" or "1"
+    is_litigation_declared: Optional[str] = None  # "0" or "1"
+    complaint_count: Optional[str] = None         # integer as string
+    is_criminal_cases: Optional[str] = None       # "0" or "1"
+
     # Developer profile ID (used for developer intelligence module)
     promoter_profile_id: Optional[str] = None
 

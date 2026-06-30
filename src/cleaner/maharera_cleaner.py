@@ -88,6 +88,11 @@ class MahareraCleaner:
             ),
             extension_count=parse_int(raw.extension_count, "extension_count") or 0,
 
+            is_litigation_present=parse_bool(raw.is_litigation_present, "is_litigation_present") or False,
+            is_litigation_declared=parse_bool(raw.is_litigation_declared, "is_litigation_declared") or False,
+            complaint_count=parse_int(raw.complaint_count, "complaint_count") or 0,
+            is_criminal_cases=parse_bool(raw.is_criminal_cases, "is_criminal_cases") or False,
+
             delay_days=delay_days,
             is_delayed=delay_days > 0 if delay_days is not None else None,
 

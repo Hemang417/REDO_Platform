@@ -200,6 +200,8 @@ class MahareraCollector:
             activity = self._api.get_building_activity(project_id)
             extensions = self._api.get_extensions(project_id)
             promoter = self._api.get_promoter_details(project_id)
+            litigation = self._api.get_litigation_details(project_id) or {}
+            complaints = self._api.get_complaint_details(project_id) or {}
 
             # Map all API responses to clean field names
             general_fields = self._parser.map_general_details(general)
@@ -208,6 +210,19 @@ class MahareraCollector:
             promoter_fields = self._parser.map_promoter_details(promoter or {})
             progress = self._parser.compute_construction_progress(activity or {})
             ext_count = self._parser.count_extensions(extensions or [])
+
+            # Extract litigation fields
+            is_litigation_present = str(int(bool(litigation.get("isLitigationPresent", False))))
+            is_litigation_declared = str(int(bool(litigation.get("isDeclared", False))))
+            # Complaint count = sum of complaint types
+            complaint_total = (
+                len(complaints.get("complaintDetails") or [])
+                + len(complaints.get("miscComplaintDetails") or [])
+                + len(complaints.get("warrentDetails") or [])
+            )
+            # isAnyCriminalCases lives in the promoter response
+            promoter_raw = promoter or {}
+            is_criminal = str(int(bool(promoter_raw.get("isAnyCriminalCases", False))))
 
             # Prefer the registration number from the API (more reliable)
             reg_num = general_fields.get("registration_number") or registration_number
@@ -232,6 +247,10 @@ class MahareraCollector:
                 registration_date=general_fields.get("registration_date"),
                 construction_progress_pct=progress,
                 extension_count=ext_count,
+                is_litigation_present=is_litigation_present,
+                is_litigation_declared=is_litigation_declared,
+                complaint_count=str(complaint_total),
+                is_criminal_cases=is_criminal,
                 last_modified=stub.get("last_modified"),
                 promoter_profile_id=general_fields.get("promoter_profile_id"),
                 detail_url=stub.get("detail_url", ""),

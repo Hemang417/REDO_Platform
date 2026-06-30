@@ -156,6 +156,20 @@ class MahareraApiClient:
             {"projectId": project_id},
         )
 
+    def get_litigation_details(self, project_id: str) -> Optional[dict]:
+        """MAHARERA litigation status: isLitigationPresent, isDeclared."""
+        return self._post(
+            "getProjectLitigationDetails",
+            {"projectId": project_id},
+        )
+
+    def get_complaint_details(self, project_id: str) -> Optional[dict]:
+        """MAHARERA complaint summary: complaintDetails, miscComplaintDetails, warrantDetails."""
+        return self._post(
+            "getComplaintDetailsByProjectId",
+            {"projectId": project_id},
+        )
+
     def close(self) -> None:
         self._session.close()
 

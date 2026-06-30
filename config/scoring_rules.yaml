@@ -6,7 +6,7 @@ scoring:
     project_viability: 0.2
     location: 0.1
   construction_progress:
-    optimal_min: 60.0
+    optimal_min: 50.0
     optimal_max: 80.0
     score_below_optimal: 0.5
     score_in_optimal: 1.0
@@ -32,7 +32,7 @@ scoring:
     completed_score: 0.2
     lapsed_score: 0.0
     deregistered_score: 0.0
-    abeyance_score: 0.1
+    abeyance_score: 0.0
     unknown_score: 0.5
   location:
     tier1_districts:
@@ -51,6 +51,14 @@ scoring:
     tier1_score: 1.0
     tier2_score: 0.65
     other_score: 0.35
+  hard_filters:
+    construction_progress_min: 50.0
+    construction_progress_max: 80.0
+    exclude_lapsed: true
+    exclude_deregistered: true
+    exclude_abeyance: true
+    exclude_if_litigation: true
+    exclude_if_criminal_cases: true
 developer_scoring:
   weights:
     completion_rate: 0.35

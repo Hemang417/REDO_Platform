@@ -56,6 +56,12 @@ class CleanProject(BaseModel):
     construction_progress_pct: Optional[float] = None
     extension_count: int = 0
 
+    # --- Litigation / legal flags (from MAHARERA litigation endpoints) ---
+    is_litigation_present: bool = False
+    is_litigation_declared: bool = False
+    complaint_count: int = 0
+    is_criminal_cases: bool = False
+
     # --- Derived fields (computed during cleaning) ---
     delay_days: Optional[int] = None
     is_delayed: Optional[bool] = None

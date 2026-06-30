@@ -8,6 +8,7 @@ from src.config.loader import (
     ConstructionProgressConfig,
     DelayConfig,
     ExtensionConfig,
+    HardFilterConfig,
     LocationConfig,
     ScoringConfig,
     ScoringWeights,
@@ -66,6 +67,16 @@ _LOC_CFG = LocationConfig(
     tier1_score=1.00, tier2_score=0.65, other_score=0.35,
 )
 
+_HARD_FILTER_CFG = HardFilterConfig(
+    construction_progress_min=0.0,
+    construction_progress_max=100.0,
+    exclude_lapsed=True,
+    exclude_deregistered=True,
+    exclude_abeyance=False,
+    exclude_if_litigation=False,
+    exclude_if_criminal_cases=False,
+)
+
 _SCORING_CFG = ScoringConfig(
     weights=_WEIGHTS,
     construction_progress=_CP_CFG,
@@ -73,6 +84,7 @@ _SCORING_CFG = ScoringConfig(
     extension_history=_EXT_CFG,
     project_viability=_VIA_CFG,
     location=_LOC_CFG,
+    hard_filters=_HARD_FILTER_CFG,
 )
 
 

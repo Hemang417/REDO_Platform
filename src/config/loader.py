@@ -126,6 +126,17 @@ class ScoringWeights:
 
 
 @dataclass(frozen=True)
+class HardFilterConfig:
+    construction_progress_min: float
+    construction_progress_max: float
+    exclude_lapsed: bool
+    exclude_deregistered: bool
+    exclude_abeyance: bool
+    exclude_if_litigation: bool
+    exclude_if_criminal_cases: bool
+
+
+@dataclass(frozen=True)
 class ScoringConfig:
     weights: ScoringWeights
     construction_progress: ConstructionProgressConfig
@@ -133,6 +144,7 @@ class ScoringConfig:
     extension_history: ExtensionConfig
     project_viability: ViabilityConfig
     location: LocationConfig
+    hard_filters: HardFilterConfig
 
 
 @dataclass(frozen=True)
@@ -276,6 +288,16 @@ def load_scoring_config(path: str = "config/scoring_rules.yaml") -> ScoringConfi
             tier2_score=float(lc["tier2_score"]),
             other_score=float(lc["other_score"]),
         )
+        hf = s.get("hard_filters", {})
+        hard_filter_cfg = HardFilterConfig(
+            construction_progress_min=float(hf.get("construction_progress_min", 0.0)),
+            construction_progress_max=float(hf.get("construction_progress_max", 100.0)),
+            exclude_lapsed=bool(hf.get("exclude_lapsed", True)),
+            exclude_deregistered=bool(hf.get("exclude_deregistered", True)),
+            exclude_abeyance=bool(hf.get("exclude_abeyance", True)),
+            exclude_if_litigation=bool(hf.get("exclude_if_litigation", False)),
+            exclude_if_criminal_cases=bool(hf.get("exclude_if_criminal_cases", False)),
+        )
     except KeyError as exc:
         raise ConfigValidationError(f"Missing scoring config key: {exc}") from exc
 
@@ -286,6 +308,7 @@ def load_scoring_config(path: str = "config/scoring_rules.yaml") -> ScoringConfi
         extension_history=ext_cfg,
         project_viability=viability_cfg,
         location=location_cfg,
+        hard_filters=hard_filter_cfg,
     )
 
 
