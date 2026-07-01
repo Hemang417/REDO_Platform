@@ -32,9 +32,24 @@ _DETAIL_URL_SELECTOR = ".col-xl-2 a.click-projectmodal.viewLink"
 # Within the info columns (col-xl-6 area)
 _LABEL_SELECTOR = ".col-xl-6 .greyColor"
 
-# Pagination
-_PAGER_SELECTOR = "ul.pager__items li.pager__item--last a"
+# Pagination (site markup as of 2026-07: div.customPagination div.pagination,
+# e.g. `Pages <span class="pagesCount" data-total="48747">1</span>of 4875`)
+_PAGINATION_SELECTOR = "div.customPagination div.pagination"
 _PAGE_QUERY_PARAM = "page"
+
+# Fixed query params the site requires alongside `page=` — omitting these
+# causes the site to silently ignore `page=` and always return page 1.
+LIST_PAGE_FIXED_PARAMS = {
+    "project_name": "",
+    "project_location": "",
+    "project_completion_date": "",
+    "project_state": 27,  # Maharashtra
+    "project_district": 0,
+    "carpetAreas": "",
+    "completionPercentages": "",
+    "project_division": "",
+    "op": "",
+}
 
 # Detail subdomain
 _DETAIL_SUBDOMAIN = "https://maharerait.maharashtra.gov.in"
@@ -168,28 +183,19 @@ class MahareraParser:
         return None
 
     def extract_total_pages(self, html: str) -> Optional[int]:
-        """Extract total page count from the list page pagination."""
+        """Extract total page count from the list page pagination.
+
+        Site markup: `Pages <span class="pagesCount" data-total="48747">1</span>of 4875`
+        — page numbering is 1-indexed.
+        """
         soup = BeautifulSoup(html, "lxml")
 
-        # Try last-page link first
-        last_link = soup.select_one(_PAGER_SELECTOR)
-        if last_link:
-            href = last_link.get("href", "")
-            match = re.search(rf"{_PAGE_QUERY_PARAM}=(\d+)", href)
+        pagination = soup.select_one(_PAGINATION_SELECTOR)
+        if pagination:
+            text = pagination.get_text(" ", strip=True)
+            match = re.search(r"of\s+(\d+)", text)
             if match:
-                return int(match.group(1)) + 1  # page param is 0-indexed
-
-        # Fallback: count all page links
-        page_links = soup.select("ul.pager__items li.pager__item a")
-        page_nums = []
-        for link in page_links:
-            href = link.get("href", "")
-            match = re.search(rf"{_PAGE_QUERY_PARAM}=(\d+)", href)
-            if match:
-                page_nums.append(int(match.group(1)))
-
-        if page_nums:
-            return max(page_nums) + 1  # 0-indexed
+                return int(match.group(1))
 
         logger.warning("Could not determine total pages from HTML")
         return None

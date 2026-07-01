@@ -33,6 +33,7 @@ from src.scraper.maharera_collector import MahareraCollector
 from src.scraper.maharera_parser import MahareraParser
 from src.scraper.storage import RawStorage
 from src.utils.logger import setup_logging
+from src.database.session import get_session_factory, init_db
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,6 +66,11 @@ def parse_args() -> argparse.Namespace:
         "--setup",
         action="store_true",
         help="Force a new CAPTCHA session setup even if a token already exists.",
+    )
+    parser.add_argument(
+        "--no-db",
+        action="store_true",
+        help="Disable writing to Postgres (JSON/CSV output only).",
     )
     return parser.parse_args()
 
@@ -113,6 +119,16 @@ def main() -> None:
         scraper_cfg.end_page or "all",
     )
 
+    db_session_factory = None
+    if not args.no_db:
+        try:
+            init_db()
+            db_session_factory = get_session_factory()
+            logger.info("Postgres connected — scraped projects will be upserted live.")
+        except Exception as exc:
+            logger.error("Could not connect to Postgres (%s). Continuing with JSON/CSV only. "
+                         "Use --no-db to silence this.", exc)
+
     with HttpClient(scraper_cfg) as http_client:
         with MahareraApiClient(jwt, scraper_cfg) as api_client:
             collector = MahareraCollector(
@@ -121,6 +137,7 @@ def main() -> None:
                 parser=MahareraParser(),
                 storage=RawStorage(storage_cfg),
                 scraper_config=scraper_cfg,
+                db_session_factory=db_session_factory,
             )
             result = collector.collect()
 

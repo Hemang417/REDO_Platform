@@ -23,8 +23,10 @@ from src.config.loader import ScraperConfig, StorageConfig
 from src.models.raw_project import RawProject
 from src.scraper.http_client import HttpClient, ScraperHTTPError
 from src.scraper.maharera_api_client import MahareraApiClient, MahareraApiError
-from src.scraper.maharera_parser import MahareraParser
+from src.scraper.maharera_parser import MahareraParser, LIST_PAGE_FIXED_PARAMS
 from src.scraper.storage import RawStorage
+from src.database.repository import upsert_projects
+from sqlalchemy.orm import sessionmaker, Session
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +63,21 @@ class MahareraCollector:
         parser: MahareraParser,
         storage: RawStorage,
         scraper_config: ScraperConfig,
+        db_session_factory: Optional["sessionmaker[Session]"] = None,
     ) -> None:
         self._http = http_client
         self._api = api_client
         self._parser = parser
         self._storage = storage
         self._cfg = scraper_config
+        self._db_session_factory = db_session_factory
+
+    def _flush_to_db(self, projects: list[RawProject]) -> None:
+        """Upsert newly collected projects into Postgres, if a DB session factory was provided."""
+        if not self._db_session_factory or not projects:
+            return
+        with self._db_session_factory() as session:
+            upsert_projects(session, projects)
 
     def collect(self) -> CollectionResult:
         """Run the full collection pipeline.
@@ -111,6 +122,7 @@ class MahareraCollector:
                     project = self._fetch_detail(stub)
                     if project:
                         all_projects.append(project)
+                        self._flush_to_db([project])  # write straight to Postgres as it's scraped
                     else:
                         all_failed.append(stub)
 
@@ -162,7 +174,7 @@ class MahareraCollector:
 
     def _determine_total_pages(self) -> Optional[int]:
         """Fetch page 1 to determine how many pages exist. Returns None if detection fails."""
-        response = self._http.get(_LIST_URL, params={"page": 0})
+        response = self._http.get(_LIST_URL, params={**LIST_PAGE_FIXED_PARAMS, "page": 1})
         total = self._parser.extract_total_pages(response.text)
         if total is None:
             logger.warning("Could not determine total pages from pagination HTML.")
@@ -173,9 +185,11 @@ class MahareraCollector:
     def _fetch_list_page(self, page_num: int) -> list[dict]:
         """Fetch and parse one list page. Returns a list of project stubs."""
         try:
-            # MAHARERA uses 0-indexed pages in the query param
+            # MAHARERA's own pagination is 1-indexed, and requires the full set of
+            # search filter params (even empty) alongside `page=` or it silently
+            # ignores the page param and always returns page 1.
             response = self._http.get(
-                _LIST_URL, params={"page": page_num - 1}
+                _LIST_URL, params={**LIST_PAGE_FIXED_PARAMS, "page": page_num}
             )
             stubs = self._parser.parse_list_page(response.text)
             logger.debug("Page %d: %d stubs parsed", page_num, len(stubs))
