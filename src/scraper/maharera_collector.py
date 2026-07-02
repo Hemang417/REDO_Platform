@@ -25,7 +25,17 @@ from src.scraper.http_client import HttpClient, ScraperHTTPError
 from src.scraper.maharera_api_client import MahareraApiClient, MahareraApiError
 from src.scraper.maharera_parser import MahareraParser, LIST_PAGE_FIXED_PARAMS
 from src.scraper.storage import RawStorage
-from src.database.repository import upsert_projects
+from src.scraper.document_downloader import DocumentDownloader
+from src.database.repository import (
+    upsert_projects,
+    upsert_documents,
+    upsert_professionals,
+    upsert_complaints,
+    upsert_appeals,
+    ProfessionalRecord,
+    ComplaintRecord,
+    AppealRecord,
+)
 from sqlalchemy.orm import sessionmaker, Session
 
 logger = logging.getLogger(__name__)
@@ -71,13 +81,95 @@ class MahareraCollector:
         self._storage = storage
         self._cfg = scraper_config
         self._db_session_factory = db_session_factory
+        self._doc_downloader = DocumentDownloader(api_client) if db_session_factory else None
 
     def _flush_to_db(self, projects: list[RawProject]) -> None:
-        """Upsert newly collected projects into Postgres, if a DB session factory was provided."""
+        """Upsert newly collected projects (and their documents/professionals/
+        complaints/appeals) into Postgres, if a DB session factory was provided."""
         if not self._db_session_factory or not projects:
             return
         with self._db_session_factory() as session:
-            upsert_projects(session, projects)
+            id_by_reg_number = upsert_projects(session, projects)
+            for project in projects:
+                db_id = id_by_reg_number.get(project.registration_number)
+                if db_id is None:
+                    continue
+                self._flush_related_entities(session, db_id, project)
+
+    def _flush_related_entities(self, session: Session, db_id: int, project: RawProject) -> None:
+        """Fetch and upsert documents/professionals/complaints/appeals for one project.
+
+        Failures here are logged and swallowed (except JWT expiry, which re-raises)
+        so a related-entity hiccup never loses the already-upserted Project row.
+        """
+        reg_num = project.registration_number
+        try:
+            if self._doc_downloader:
+                documents = self._doc_downloader.download_for_project(db_id, project.project_id, reg_num)
+                upsert_documents(session, documents)
+
+            professionals_raw = self._api.get_professionals(project.project_id)
+            professionals = [
+                ProfessionalRecord(
+                    project_id=db_id,
+                    registration_number=reg_num,
+                    promoter_professional_id=p.get("promoterProfessionalId"),
+                    professional_type_id=p.get("professionalTypeId"),
+                    first_name=p.get("firstName"),
+                    last_name=p.get("lastName"),
+                    entity_company_name=p.get("entityCompanyName"),
+                    architect_coa_registration_no=p.get("architectCoARegistrationNo"),
+                    engineer_license_no=p.get("engineerLicenseNo"),
+                    ca_icai_membership_no=p.get("caIcaiMembershipNo"),
+                    real_estate_agent_rera_reg_no=p.get("realEstateAgentReraRegNo"),
+                )
+                for p in professionals_raw
+                if p.get("promoterProfessionalId") is not None
+            ]
+            upsert_professionals(session, professionals)
+
+            complaints_raw = self._api.get_itemized_complaints(project.project_id)
+            complaints = [
+                ComplaintRecord(
+                    project_id=db_id,
+                    registration_number=reg_num,
+                    complaint_no=str(
+                        c.get("complaintRegistrationNo") or c.get("complaintId") or f"unknown-{i}"
+                    ),
+                    complaint_date=c.get("complaintRegistrationDate"),
+                    complainant_name=c.get("profileNameComplainant"),
+                    respondent_name=c.get("profileNameRespondent"),
+                    complaint_status=c.get("complaintStatus"),
+                    raw_data=c,
+                )
+                for i, c in enumerate(complaints_raw)
+            ]
+            upsert_complaints(session, complaints)
+
+            appeals_raw = self._api.get_appeals(project.project_id)
+            appeals = [
+                AppealRecord(
+                    project_id=db_id,
+                    registration_number=reg_num,
+                    appeal_no=str(a.get("appealNo") or a.get("appealNumber") or f"unknown-{i}"),
+                    complaint_reference_no=a.get("complaintReferenceNo") or a.get("referenceNo"),
+                    appeal_date=a.get("appealDate"),
+                    appellant_name=a.get("appellantName"),
+                    respondent_name=a.get("respondentName"),
+                    appeal_status=a.get("appealStatus") or a.get("status"),
+                    raw_data=a,
+                )
+                for i, a in enumerate(appeals_raw)
+            ]
+            upsert_appeals(session, appeals)
+
+        except MahareraApiError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch/upsert related entities for project_id=%s registration=%s: %s",
+                project.project_id, reg_num, exc,
+            )
 
     def collect(self) -> CollectionResult:
         """Run the full collection pipeline.

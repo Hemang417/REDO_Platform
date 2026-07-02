@@ -21,6 +21,7 @@ output/scored/
 output/intelligence/
 output/memos/
 output/reports/
+output/documents/
 
 # MAHARERA session tokens (contain live auth cookies — never commit)
 config/maharera_token.json

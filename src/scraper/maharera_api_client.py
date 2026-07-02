@@ -31,6 +31,12 @@ _AUTH_URL = (
     "https://maharerait.maharashtra.gov.in"
     "/api/maha-rera-login-service/login/authenticatePublic"
 )
+_DMS_DOWNLOAD_URL = (
+    "https://maharerait.maharashtra.gov.in"
+    "/api/maha-rera-dms-service/batch-job/downloadDocumentForPublicView"
+)
+_COMPLAINT_API_BASE = "https://maharerait.maharashtra.gov.in/api/maha-rera-complaint-management-service/complaint"
+_APPEAL_API_BASE = "https://maharerait.maharashtra.gov.in/api/maha-rera-appeal-service/reatappeal"
 _RETRY_STATUS_CODES = (429, 500, 502, 503, 504)
 
 
@@ -76,9 +82,14 @@ class MahareraApiClient:
         return session
 
     def _post(self, endpoint: str, body: dict) -> Optional[dict]:
-        """POST to an API endpoint and return responseObject, or None on failure."""
+        """POST to an endpoint on the main project-registration API base."""
+        return self._post_absolute(f"{_API_BASE}/{endpoint}", body)
+
+    def _post_absolute(self, url: str, body: dict) -> Optional[dict]:
+        """POST to a fully-qualified URL (used for endpoints on other service bases:
+        dms-service, complaint-management-service, appeal-service, etc.) and return
+        responseObject, or None on failure."""
         time.sleep(self._config.rate_limit_delay)
-        url = f"{_API_BASE}/{endpoint}"
         try:
             response = self._session.post(
                 url,
@@ -86,7 +97,7 @@ class MahareraApiClient:
                 timeout=self._config.request_timeout,
             )
         except requests.RequestException as exc:
-            raise MahareraApiError(f"Request failed for {endpoint}: {exc}") from exc
+            raise MahareraApiError(f"Request failed for {url}: {exc}") from exc
 
         if response.status_code == 401:
             raise MahareraApiError(
@@ -96,7 +107,7 @@ class MahareraApiClient:
         if not response.ok:
             logger.warning(
                 "Non-200 from %s | status=%d | body_preview=%.200s",
-                endpoint,
+                url,
                 response.status_code,
                 response.text,
             )
@@ -106,8 +117,36 @@ class MahareraApiClient:
             data = response.json()
             return data.get("responseObject")
         except ValueError as exc:
-            logger.warning("JSON parse error for %s: %s", endpoint, exc)
+            logger.warning("JSON parse error for %s: %s", url, exc)
             return None
+
+    def download_document(self, file_name: str, document_id: str) -> Optional[bytes]:
+        """Download a document's raw bytes via the DMS service.
+
+        Unlike other endpoints this returns raw binary (e.g. application/pdf),
+        not a JSON-wrapped responseObject.
+        """
+        time.sleep(self._config.rate_limit_delay)
+        try:
+            response = self._session.post(
+                _DMS_DOWNLOAD_URL,
+                json={"fileName": file_name, "documentId": document_id},
+                timeout=self._config.request_timeout,
+            )
+        except requests.RequestException as exc:
+            raise MahareraApiError(f"Document download failed for {document_id}: {exc}") from exc
+
+        if response.status_code == 401:
+            raise MahareraApiError("JWT expired or invalid — re-run scripts/setup_session.py")
+
+        if not response.ok:
+            logger.warning(
+                "Non-200 downloading document %s (%s) | status=%d",
+                document_id, file_name, response.status_code,
+            )
+            return None
+
+        return response.content
 
     # ------------------------------------------------------------------
     # Endpoint wrappers — one method per API endpoint we use
@@ -169,6 +208,36 @@ class MahareraApiClient:
             "getComplaintDetailsByProjectId",
             {"projectId": project_id},
         )
+
+    def get_uploaded_documents(self, project_id: str) -> list:
+        """List of uploaded documents for a project: documentDmsRefNo (= the id used
+        by download_document), documentFileName, documentTypeId, documentDetails,
+        documentDescription, uploadDate, isActive."""
+        result = self._post("getUploadedDocuments", {"projectId": project_id})
+        return result if isinstance(result, list) else []
+
+    def get_professionals(self, project_id: str) -> list:
+        """Project professionals: architects, engineers, CAs, real-estate agents.
+        Fields include professionalTypeId, firstName/lastName or entityCompanyName,
+        and type-specific registration numbers (architectCoARegistrationNo,
+        engineerLicenseNo, caIcaiMembershipNo, realEstateAgentReraRegNo)."""
+        result = self._post("getProjectProfessionalByType", {"projectId": project_id})
+        return result if isinstance(result, list) else []
+
+    def get_itemized_complaints(self, project_id: str) -> list:
+        """Itemized complaints against a project (different from get_complaint_details,
+        which only returns aggregate counts). Lives on a separate service base."""
+        result = self._post_absolute(
+            f"{_COMPLAINT_API_BASE}/getComplaintByProjectId", {"projectId": project_id}
+        )
+        return result if isinstance(result, list) else []
+
+    def get_appeals(self, project_id: str) -> list:
+        """Itemized appeals filed against a project's RERA decisions."""
+        result = self._post_absolute(
+            f"{_APPEAL_API_BASE}/getAppealDetailsPublicView", {"projectId": project_id}
+        )
+        return result if isinstance(result, list) else []
 
     def close(self) -> None:
         self._session.close()
