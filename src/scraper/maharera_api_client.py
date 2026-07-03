@@ -239,6 +239,44 @@ class MahareraApiClient:
         )
         return result if isinstance(result, list) else []
 
+    def get_partners(self, project_id: str, user_profile_id: str) -> list:
+        """Individual partners/directors/signatories of the promoter entity.
+        Requires userProfileId (= promoter_profile_id from general details) in
+        addition to projectId — omitting it returns no records even when data exists.
+        PII fields (panNumber, mobileNumber, address) come back encrypted by MAHARERA;
+        we store them as opaque ciphertext, never attempt to decrypt."""
+        result = self._post(
+            "fetchPromoterPersonnelContactAddressDetails",
+            {"projectId": project_id, "userProfileId": user_profile_id},
+        )
+        return result if isinstance(result, list) else []
+
+    def get_past_experience(self, project_id: str, user_profile_id: str) -> list:
+        """Promoter's past/other project track record: project name, address,
+        land area, unit counts, cost, completion dates, litigation flag."""
+        result = self._post(
+            "getPastExperienceProjectByProjectIdAndUserProfileId",
+            {"projectId": project_id, "userProfileId": user_profile_id},
+        )
+        return result if isinstance(result, list) else []
+
+    def get_spoc(self, project_id: str, user_profile_id: str) -> list:
+        """Promoter's single point of contact. Field names unconfirmed — no
+        project seen during discovery had a populated record."""
+        result = self._post(
+            "getPromoterSpocDetails",
+            {"projectId": project_id, "userProfileId": user_profile_id},
+        )
+        return result if isinstance(result, list) else []
+
+    def get_sro_details(self, project_id: str) -> list:
+        """Promoter's SRO (professional-body) membership/certificate records.
+        Field names unconfirmed for a populated case — no project seen during
+        discovery had one, though the {projectId} request shape itself works
+        (confirmed via clean 'no records found' response, not an error)."""
+        result = self._post("getProjectSroDetails", {"projectId": project_id})
+        return result if isinstance(result, list) else []
+
     def close(self) -> None:
         self._session.close()
 

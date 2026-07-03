@@ -14,7 +14,9 @@ from datetime import datetime
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from src.database.models import Project, Document, Professional, Complaint, Appeal
+from src.database.models import (
+    Project, Document, Professional, Complaint, Appeal, Partner, PastExperience, Spoc, SroDetail,
+)
 from src.models.raw_project import RawProject
 
 logger = logging.getLogger(__name__)
@@ -240,4 +242,170 @@ def upsert_appeals(session: Session, appeals: list[AppealRecord]) -> int:
     session.commit()
 
     logger.info("Upserted %d appeals into Postgres", len(rows))
+    return len(rows)
+
+
+@dataclass
+class PartnerRecord:
+    project_id: int
+    registration_number: str
+    personnel_id: int
+    raw_data: dict
+    first_name: str | None = None
+    middle_name: str | None = None
+    last_name: str | None = None
+    designation: str | None = None
+    pan_number_encrypted: str | None = None
+    mobile_number_encrypted: str | None = None
+    email_hash: str | None = None
+    din_number: str | None = None
+
+
+def upsert_partners(session: Session, partners: list[PartnerRecord]) -> int:
+    """Upsert promoter partners/directors, keyed on (project_id, personnel_id)."""
+    if not partners:
+        return 0
+
+    fields = ["project_id", "registration_number", "first_name", "middle_name", "last_name",
+              "designation", "pan_number_encrypted", "mobile_number_encrypted", "email_hash",
+              "din_number", "raw_data"]
+    rows = [
+        {"personnel_id": p.personnel_id, **{f: getattr(p, f) for f in fields}}
+        for p in partners
+    ]
+
+    stmt = pg_insert(Partner).values(rows)
+    update_cols = {f: stmt.excluded[f] for f in fields}
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["project_id", "personnel_id"],
+        set_=update_cols,
+    )
+    session.execute(stmt)
+    session.commit()
+
+    logger.info("Upserted %d partners into Postgres", len(rows))
+    return len(rows)
+
+
+@dataclass
+class PastExperienceRecord:
+    project_id: int
+    registration_number: str
+    past_experience_id: int
+    raw_data: dict
+    past_project_name: str | None = None
+    address: str | None = None
+    land_area: str | None = None
+    number_of_buildings_plots: str | None = None
+    number_of_apartments: str | None = None
+    total_cost: str | None = None
+    original_proposed_completion_date: str | None = None
+    actual_completion_date: str | None = None
+    past_project_type_name: str | None = None
+    past_project_status: str | None = None
+    is_project_has_litigation: str | None = None
+    is_registered_with_maharera: str | None = None
+    maharera_registration_number: str | None = None
+
+
+def upsert_past_experiences(session: Session, records: list[PastExperienceRecord]) -> int:
+    """Upsert promoter past-experience projects, keyed on (project_id, past_experience_id)."""
+    if not records:
+        return 0
+
+    fields = ["project_id", "registration_number", "past_project_name", "address", "land_area",
+              "number_of_buildings_plots", "number_of_apartments", "total_cost",
+              "original_proposed_completion_date", "actual_completion_date",
+              "past_project_type_name", "past_project_status", "is_project_has_litigation",
+              "is_registered_with_maharera", "maharera_registration_number", "raw_data"]
+    rows = [
+        {"past_experience_id": r.past_experience_id, **{f: getattr(r, f) for f in fields}}
+        for r in records
+    ]
+
+    stmt = pg_insert(PastExperience).values(rows)
+    update_cols = {f: stmt.excluded[f] for f in fields}
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["project_id", "past_experience_id"],
+        set_=update_cols,
+    )
+    session.execute(stmt)
+    session.commit()
+
+    logger.info("Upserted %d past-experience records into Postgres", len(rows))
+    return len(rows)
+
+
+@dataclass
+class SpocRecord:
+    project_id: int
+    registration_number: str
+    spoc_id: str
+    raw_data: dict
+    first_name: str | None = None
+    middle_name: str | None = None
+    last_name: str | None = None
+    designation: str | None = None
+    spoc_type: str | None = None
+    mobile_number: str | None = None
+    email: str | None = None
+    pan_number: str | None = None
+
+
+def upsert_spocs(session: Session, records: list[SpocRecord]) -> int:
+    """Upsert SPOC records, keyed on (project_id, spoc_id)."""
+    if not records:
+        return 0
+
+    fields = ["project_id", "registration_number", "first_name", "middle_name", "last_name",
+              "designation", "spoc_type", "mobile_number", "email", "pan_number", "raw_data"]
+    rows = [
+        {"spoc_id": r.spoc_id, **{f: getattr(r, f) for f in fields}}
+        for r in records
+    ]
+
+    stmt = pg_insert(Spoc).values(rows)
+    update_cols = {f: stmt.excluded[f] for f in fields}
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["project_id", "spoc_id"],
+        set_=update_cols,
+    )
+    session.execute(stmt)
+    session.commit()
+
+    logger.info("Upserted %d SPOC records into Postgres", len(rows))
+    return len(rows)
+
+
+@dataclass
+class SroDetailRecord:
+    project_id: int
+    registration_number: str
+    sro_id: str
+    raw_data: dict
+
+
+def upsert_sro_details(session: Session, records: list[SroDetailRecord]) -> int:
+    """Upsert SRO detail records, keyed on (project_id, sro_id). Raw-data-only
+    until a populated record confirms the real field names (see SroDetail model
+    docstring)."""
+    if not records:
+        return 0
+
+    fields = ["project_id", "registration_number", "raw_data"]
+    rows = [
+        {"sro_id": r.sro_id, **{f: getattr(r, f) for f in fields}}
+        for r in records
+    ]
+
+    stmt = pg_insert(SroDetail).values(rows)
+    update_cols = {f: stmt.excluded[f] for f in fields}
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["project_id", "sro_id"],
+        set_=update_cols,
+    )
+    session.execute(stmt)
+    session.commit()
+
+    logger.info("Upserted %d SRO detail records into Postgres", len(rows))
     return len(rows)

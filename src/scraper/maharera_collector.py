@@ -32,15 +32,33 @@ from src.database.repository import (
     upsert_professionals,
     upsert_complaints,
     upsert_appeals,
+    upsert_partners,
+    upsert_past_experiences,
+    upsert_spocs,
+    upsert_sro_details,
     ProfessionalRecord,
     ComplaintRecord,
     AppealRecord,
+    PartnerRecord,
+    PastExperienceRecord,
+    SpocRecord,
+    SroDetailRecord,
 )
 from sqlalchemy.orm import sessionmaker, Session
 
 logger = logging.getLogger(__name__)
 
 _LIST_URL = "https://maharera.maharashtra.gov.in/projects-search-result"
+
+
+def _to_str(value: object) -> Optional[str]:
+    """Coerce a JSON value (int/float/bool/None/str) to str for String columns,
+    without the '1.0' float-formatting surprises str() gives for whole floats."""
+    if value is None:
+        return None
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 @dataclass
@@ -162,6 +180,90 @@ class MahareraCollector:
                 for i, a in enumerate(appeals_raw)
             ]
             upsert_appeals(session, appeals)
+
+            # Partners, past experience, and SPOC all require the promoter's
+            # userProfileId (= promoter_profile_id) in addition to projectId.
+            if project.promoter_profile_id:
+                partners_raw = self._api.get_partners(project.project_id, project.promoter_profile_id)
+                partners = [
+                    PartnerRecord(
+                        project_id=db_id,
+                        registration_number=reg_num,
+                        personnel_id=p["userProfilePesonnelContactAddressDetailsId"],
+                        first_name=p.get("firstname"),
+                        middle_name=p.get("middleName"),
+                        last_name=p.get("lastName"),
+                        designation=p.get("userProfilePersonnelDesignationId"),
+                        pan_number_encrypted=p.get("panNumber"),
+                        mobile_number_encrypted=p.get("mobileNumber"),
+                        email_hash=p.get("emailId"),
+                        din_number=p.get("dinNumber"),
+                        raw_data=p,
+                    )
+                    for p in partners_raw
+                    if p.get("userProfilePesonnelContactAddressDetailsId") is not None
+                ]
+                upsert_partners(session, partners)
+
+                past_exp_raw = self._api.get_past_experience(project.project_id, project.promoter_profile_id)
+                past_experiences = [
+                    PastExperienceRecord(
+                        project_id=db_id,
+                        registration_number=reg_num,
+                        past_experience_id=pe["userProfilePastExperienceId"],
+                        past_project_name=pe.get("projectName"),
+                        address=pe.get("address"),
+                        land_area=_to_str(pe.get("landArea")),
+                        number_of_buildings_plots=_to_str(pe.get("numberOfBuildingsPlots")),
+                        number_of_apartments=_to_str(pe.get("numberOfApartments")),
+                        total_cost=_to_str(pe.get("totalCost")),
+                        original_proposed_completion_date=pe.get("originalProposedCompletionDate"),
+                        actual_completion_date=pe.get("actualCompletionDate"),
+                        past_project_type_name=pe.get("projectTypeName"),
+                        past_project_status=_to_str(pe.get("projectStatusId")),
+                        is_project_has_litigation=_to_str(pe.get("isProjectHasLitigation")),
+                        is_registered_with_maharera=_to_str(pe.get("isProjectsRegisteredWithMahaRERA")),
+                        maharera_registration_number=pe.get("mahaRERARegistrationNumber"),
+                        raw_data=pe,
+                    )
+                    for pe in past_exp_raw
+                    if pe.get("userProfilePastExperienceId") is not None
+                ]
+                upsert_past_experiences(session, past_experiences)
+
+                spoc_raw = self._api.get_spoc(project.project_id, project.promoter_profile_id)
+                spocs = [
+                    SpocRecord(
+                        project_id=db_id,
+                        registration_number=reg_num,
+                        spoc_id=str(
+                            s.get("promoterSpocDetailsId") or f"unknown-{i}"
+                        ),
+                        first_name=s.get("firstName"),
+                        middle_name=s.get("middleName"),
+                        last_name=s.get("lastName"),
+                        designation=s.get("designation"),
+                        spoc_type=s.get("spocType"),
+                        mobile_number=s.get("mobileNumber"),
+                        email=s.get("emailId"),
+                        pan_number=s.get("panNumber"),
+                        raw_data=s,
+                    )
+                    for i, s in enumerate(spoc_raw)
+                ]
+                upsert_spocs(session, spocs)
+
+            sro_raw = self._api.get_sro_details(project.project_id)
+            sro_details = [
+                SroDetailRecord(
+                    project_id=db_id,
+                    registration_number=reg_num,
+                    sro_id=str(s.get("id") or s.get("sroId") or f"unknown-{i}"),
+                    raw_data=s,
+                )
+                for i, s in enumerate(sro_raw)
+            ]
+            upsert_sro_details(session, sro_details)
 
         except MahareraApiError:
             raise

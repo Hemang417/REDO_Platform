@@ -235,3 +235,171 @@ class Appeal(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class Partner(Base):
+    """An individual partner/director/authorised-signatory of the promoter entity
+    (fetchPromoterPersonnelContactAddressDetails). Confirmed via live discovery with
+    real data (2026-07-03).
+
+    PII fields (pan_number, mobile_number, email, address parts) are stored exactly
+    as MAHARERA returns them: encrypted ciphertext (AES, base64-encoded) or a hash.
+    We do not have MAHARERA's key and make no attempt to decrypt — these columns are
+    opaque blobs, useful only for exact-match dedup, not for reading PII.
+
+    Dedup key: (project_id, personnel_id) — MAHARERA's own per-record id.
+    """
+
+    __tablename__ = "partners"
+    __table_args__ = (
+        UniqueConstraint("project_id", "personnel_id", name="uq_partners_project_id_personnel_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    registration_number: Mapped[str] = mapped_column(String(64), index=True)
+
+    personnel_id: Mapped[int] = mapped_column(Integer)  # userProfilePesonnelContactAddressDetailsId
+    first_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    middle_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    designation: Mapped[str | None] = mapped_column(String(128), nullable=True)  # userProfilePersonnelDesignationId, e.g. "Partner"
+
+    pan_number_encrypted: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    mobile_number_encrypted: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    email_hash: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    din_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    raw_data: Mapped[dict] = mapped_column(JSONB)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class PastExperience(Base):
+    """One prior/other project in the promoter's track record
+    (getPastExperienceProjectByProjectIdAndUserProfileId). Confirmed via live
+    discovery with real data (2026-07-03) — this is the developer's portfolio
+    history, valuable for the developer-intelligence module.
+
+    Dedup key: (project_id, past_experience_id) — MAHARERA's own per-record id.
+    Note this is scoped to the *current* project's promoter, not a standalone
+    developer table — the same past project may appear once per current project
+    that shares the promoter, which is fine for dedup (different project_id).
+    """
+
+    __tablename__ = "past_experiences"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "past_experience_id", name="uq_past_experiences_project_id_past_experience_id"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    registration_number: Mapped[str] = mapped_column(String(64), index=True)
+
+    past_experience_id: Mapped[int] = mapped_column(Integer)  # userProfilePastExperienceId
+    past_project_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    land_area: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    number_of_buildings_plots: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    number_of_apartments: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    total_cost: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    original_proposed_completion_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    actual_completion_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    past_project_type_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    past_project_status: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_project_has_litigation: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    is_registered_with_maharera: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    maharera_registration_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    raw_data: Mapped[dict] = mapped_column(JSONB)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Spoc(Base):
+    """Promoter's Single Point of Contact (getPromoterSpocDetails). Confirmed via
+    live validation run (2026-07-03) — real records exist. NOTE: unlike Partner
+    (fetchPromoterPersonnelContactAddressDetails), this endpoint returns PAN,
+    mobile, and email UNENCRYPTED — an inconsistency on MAHARERA's side, not ours.
+    We store what's returned as-is.
+
+    Dedup key: (project_id, spoc_id) — spoc_id = MAHARERA's promoterSpocDetailsId.
+    """
+
+    __tablename__ = "spocs"
+    __table_args__ = (
+        UniqueConstraint("project_id", "spoc_id", name="uq_spocs_project_id_spoc_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    registration_number: Mapped[str] = mapped_column(String(64), index=True)
+
+    spoc_id: Mapped[str] = mapped_column(String(128))
+    first_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    middle_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    designation: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    spoc_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    mobile_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    pan_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    raw_data: Mapped[dict] = mapped_column(JSONB)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class SroDetail(Base):
+    """Promoter's SRO (professional-body) membership/certificate record
+    (getProjectSroDetails). Field names unconfirmed — every project seen during
+    discovery had zero records (page columns were "Promoter Project Member
+    Number | SRO Membership Type Name | Certificate", but no real payload was
+    observed). raw_data-only until a populated record is seen.
+
+    Dedup key: (project_id, sro_id) if MAHARERA returns a stable id; falls back
+    to a synthetic index-based key otherwise.
+    """
+
+    __tablename__ = "sro_details"
+    __table_args__ = (
+        UniqueConstraint("project_id", "sro_id", name="uq_sro_details_project_id_sro_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    registration_number: Mapped[str] = mapped_column(String(64), index=True)
+
+    sro_id: Mapped[str] = mapped_column(String(128))
+    raw_data: Mapped[dict] = mapped_column(JSONB)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

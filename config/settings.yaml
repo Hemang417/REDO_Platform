@@ -3,7 +3,7 @@ scraper:
   detail_base_url: "https://maharerait.maharashtra.gov.in/public/project/view"
   start_page: 1
   end_page: null          # null = scrape all pages; set to 2 for testing
-  request_timeout: 30
+  request_timeout: 60
   rate_limit_delay: 1.5   # seconds between each HTTP request
   max_retries: 3
   retry_backoff_factor: 2.0
