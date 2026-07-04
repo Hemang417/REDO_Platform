@@ -10,6 +10,9 @@ Usage:
     python scripts/run_collector.py --start-page 50         # resume from page 50
     python scripts/run_collector.py --dry-run               # parse but do not write files
     python scripts/run_collector.py --config /path/to/alt.yaml
+    python scripts/run_collector.py --skip-related          # fast pass: core fields only,
+                                                             # backfill documents/etc. later
+                                                             # with scripts/run_backfill.py
 
 Exit codes:
     0  Collection completed (possibly with some failed detail fetches)
@@ -71,6 +74,13 @@ def parse_args() -> argparse.Namespace:
         "--no-db",
         action="store_true",
         help="Disable writing to Postgres (JSON/CSV output only).",
+    )
+    parser.add_argument(
+        "--skip-related",
+        action="store_true",
+        help="Fast pass: only fetch core project fields, skip documents/professionals/"
+             "partners/complaints/appeals/spoc/sro. Use scripts/run_backfill.py "
+             "afterward to fill those in for already-scraped projects.",
     )
     return parser.parse_args()
 
@@ -138,6 +148,7 @@ def main() -> None:
                 storage=RawStorage(storage_cfg),
                 scraper_config=scraper_cfg,
                 db_session_factory=db_session_factory,
+                skip_related=args.skip_related,
             )
             result = collector.collect()
 
