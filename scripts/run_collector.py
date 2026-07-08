@@ -5,14 +5,18 @@ Prerequisites:
     Run scripts/setup_session.py first to obtain a valid JWT.
 
 Usage:
-    python scripts/run_collector.py
+    python scripts/run_collector.py                         # defaults to --districts mmr_pune
     python scripts/run_collector.py --end-page 2            # test run (2 pages, ~20 projects)
-    python scripts/run_collector.py --start-page 50         # resume from page 50
+    python scripts/run_collector.py --start-page 50         # resume from page 50 of the FIRST
+                                                             # district in the --districts list
     python scripts/run_collector.py --dry-run               # parse but do not write files
     python scripts/run_collector.py --config /path/to/alt.yaml
     python scripts/run_collector.py --skip-related          # fast pass: core fields only,
                                                              # backfill documents/etc. later
                                                              # with scripts/run_backfill.py
+    python scripts/run_collector.py --districts 519         # Mumbai City only
+    python scripts/run_collector.py --districts 519,521     # Mumbai City + Pune only
+    python scripts/run_collector.py --districts all         # no district filter (full site)
 
 Exit codes:
     0  Collection completed (possibly with some failed detail fetches)
@@ -33,7 +37,7 @@ from src.scraper.browser_client import load_token, setup_session, SessionSetupEr
 from src.scraper.http_client import HttpClient
 from src.scraper.maharera_api_client import MahareraApiClient
 from src.scraper.maharera_collector import MahareraCollector
-from src.scraper.maharera_parser import MahareraParser
+from src.scraper.maharera_parser import MahareraParser, MMR_PUNE_DISTRICTS
 from src.scraper.storage import RawStorage
 from src.utils.logger import setup_logging
 from src.database.session import get_session_factory, init_db
@@ -82,7 +86,22 @@ def parse_args() -> argparse.Namespace:
              "partners/complaints/appeals/spoc/sro. Use scripts/run_backfill.py "
              "afterward to fill those in for already-scraped projects.",
     )
+    parser.add_argument(
+        "--districts",
+        default="mmr_pune",
+        help="Comma-separated MAHARERA district IDs to scrape (e.g. '519,521'), "
+             "the preset 'mmr_pune' (default — Mumbai City/Suburban, Thane, Raigad, "
+             "Palghar, Pune), or 'all' for no district filter (every district).",
+    )
     return parser.parse_args()
+
+
+def resolve_district_ids(spec: str) -> list[int]:
+    if spec == "mmr_pune":
+        return list(MMR_PUNE_DISTRICTS.keys())
+    if spec == "all":
+        return [0]
+    return [int(d.strip()) for d in spec.split(",") if d.strip()]
 
 
 def main() -> None:
@@ -139,6 +158,9 @@ def main() -> None:
             logger.error("Could not connect to Postgres (%s). Continuing with JSON/CSV only. "
                          "Use --no-db to silence this.", exc)
 
+    district_ids = resolve_district_ids(args.districts)
+    logger.info("Target districts: %s", district_ids)
+
     with HttpClient(scraper_cfg) as http_client:
         with MahareraApiClient(jwt, scraper_cfg) as api_client:
             collector = MahareraCollector(
@@ -149,6 +171,7 @@ def main() -> None:
                 scraper_config=scraper_cfg,
                 db_session_factory=db_session_factory,
                 skip_related=args.skip_related,
+                district_ids=district_ids,
             )
             result = collector.collect()
 

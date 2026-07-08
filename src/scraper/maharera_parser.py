@@ -39,17 +39,38 @@ _PAGE_QUERY_PARAM = "page"
 
 # Fixed query params the site requires alongside `page=` — omitting these
 # causes the site to silently ignore `page=` and always return page 1.
+# project_district is deliberately NOT included here — it varies per request
+# (see build_list_page_params below); 0 means "all districts, no filter".
 LIST_PAGE_FIXED_PARAMS = {
     "project_name": "",
     "project_location": "",
     "project_completion_date": "",
     "project_state": 27,  # Maharashtra
-    "project_district": 0,
     "carpetAreas": "",
     "completionPercentages": "",
     "project_division": "",
     "op": "",
 }
+
+# District IDs confirmed live from the site's own <select name="project_district">
+# dropdown (2026-07-05). MMR = Mumbai Metropolitan Region (Mumbai City, Mumbai
+# Suburban, Thane, Raigad, Palghar, per the MMRDA's standard definition); Pune
+# is its own district. Ordered smallest-to-largest by page count so a short
+# session covers a whole district before moving to the next.
+MMR_PUNE_DISTRICTS = {
+    519: "Mumbai City",       # ~129 pages
+    990: "Palghar",           # ~267 pages
+    520: "Raigarh",           # ~532 pages
+    518: "Mumbai Suburban",   # ~619 pages
+    517: "Thane",             # ~682 pages
+    521: "Pune",              # ~1267 pages
+}
+
+
+def build_list_page_params(page_num: int, district_id: int = 0) -> dict:
+    """Build the full query param dict for one list-page request.
+    district_id=0 means no district filter (all of Maharashtra)."""
+    return {**LIST_PAGE_FIXED_PARAMS, "project_district": district_id, "page": page_num}
 
 # Detail subdomain
 _DETAIL_SUBDOMAIN = "https://maharerait.maharashtra.gov.in"

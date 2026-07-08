@@ -23,7 +23,7 @@ from src.config.loader import ScraperConfig, StorageConfig
 from src.models.raw_project import RawProject
 from src.scraper.http_client import HttpClient, ScraperHTTPError
 from src.scraper.maharera_api_client import MahareraApiClient, MahareraApiError
-from src.scraper.maharera_parser import MahareraParser, LIST_PAGE_FIXED_PARAMS
+from src.scraper.maharera_parser import MahareraParser, build_list_page_params, MMR_PUNE_DISTRICTS
 from src.scraper.storage import RawStorage
 from src.scraper.document_downloader import DocumentDownloader
 from src.scraper.related_entity_fetcher import RelatedEntityFetcher
@@ -67,6 +67,7 @@ class MahareraCollector:
         scraper_config: ScraperConfig,
         db_session_factory: Optional["sessionmaker[Session]"] = None,
         skip_related: bool = False,
+        district_ids: Optional[list[int]] = None,
     ) -> None:
         self._http = http_client
         self._api = api_client
@@ -75,6 +76,10 @@ class MahareraCollector:
         self._cfg = scraper_config
         self._db_session_factory = db_session_factory
         self._skip_related = skip_related
+        # [0] = no district filter (all of Maharashtra). Order matters — the
+        # first district in the list is the one --start-page applies to when
+        # resuming; every subsequent district always starts at page 1.
+        self._district_ids = district_ids if district_ids else [0]
         doc_downloader = DocumentDownloader(api_client) if db_session_factory else None
         self._related_fetcher = RelatedEntityFetcher(api_client, doc_downloader)
 
@@ -99,7 +104,7 @@ class MahareraCollector:
                 )
 
     def collect(self) -> CollectionResult:
-        """Run the full collection pipeline.
+        """Run the full collection pipeline across every district in self._district_ids.
 
         Returns:
             CollectionResult with statistics and output paths.
@@ -114,57 +119,57 @@ class MahareraCollector:
         pages_scraped = 0
 
         try:
-            total_pages = self._determine_total_pages()
+            for district_index, district_id in enumerate(self._district_ids):
+                district_name = MMR_PUNE_DISTRICTS.get(district_id, "ALL" if district_id == 0 else str(district_id))
+                # --start-page only applies to the first district in the list —
+                # every subsequent district is a fresh start at page 1.
+                start_page = self._cfg.start_page if district_index == 0 else 1
 
-            if self._cfg.end_page is not None:
-                # User override: trust it; don't cap against an unknown total
-                end_page = (
-                    min(self._cfg.end_page, total_pages)
-                    if total_pages is not None
-                    else self._cfg.end_page
-                )
-            else:
-                end_page = total_pages if total_pages is not None else 1
+                total_pages = self._determine_total_pages(district_id)
 
-            logger.info(
-                "Scraping pages %d to %d%s",
-                self._cfg.start_page,
-                end_page,
-                f" (of {total_pages} total)" if total_pages is not None else " (total unknown)",
-            )
-
-            for page_num in range(self._cfg.start_page, end_page + 1):
-                stubs = self._fetch_list_page(page_num)
-                pages_scraped += 1
-
-                for stub in stubs:
-                    project = self._fetch_detail(stub)
-                    if project:
-                        all_projects.append(project)
-                        self._flush_to_db([project])  # write straight to Postgres as it's scraped
-                    else:
-                        all_failed.append(stub)
-
-                    # Checkpoint flush
-                    if len(all_projects) % self._cfg.checkpoint_interval == 0 and all_projects:
-                        logger.info(
-                            "Checkpoint | page=%d | collected=%d | failed=%d",
-                            page_num,
-                            len(all_projects),
-                            len(all_failed),
-                        )
-                        output_paths = self._storage.save(
-                            all_projects, run_id, append=(pages_scraped > 1)
-                        )
-
-                if page_num % 10 == 0:
-                    logger.info(
-                        "Progress | page=%d/%d | collected=%d | failed=%d",
-                        page_num,
-                        end_page,
-                        len(all_projects),
-                        len(all_failed),
+                if self._cfg.end_page is not None and district_index == 0:
+                    # User override: trust it; don't cap against an unknown total
+                    end_page = (
+                        min(self._cfg.end_page, total_pages)
+                        if total_pages is not None
+                        else self._cfg.end_page
                     )
+                else:
+                    end_page = total_pages if total_pages is not None else 1
+
+                logger.info(
+                    "District %s (id=%d) | scraping pages %d to %d%s",
+                    district_name, district_id, start_page, end_page,
+                    f" (of {total_pages} total)" if total_pages is not None else " (total unknown)",
+                )
+
+                for page_num in range(start_page, end_page + 1):
+                    stubs = self._fetch_list_page(page_num, district_id)
+                    pages_scraped += 1
+
+                    for stub in stubs:
+                        project = self._fetch_detail(stub)
+                        if project:
+                            all_projects.append(project)
+                            self._flush_to_db([project])  # write straight to Postgres as it's scraped
+                        else:
+                            all_failed.append(stub)
+
+                        # Checkpoint flush
+                        if len(all_projects) % self._cfg.checkpoint_interval == 0 and all_projects:
+                            logger.info(
+                                "Checkpoint | district=%s | page=%d | collected=%d | failed=%d",
+                                district_name, page_num, len(all_projects), len(all_failed),
+                            )
+                            output_paths = self._storage.save(
+                                all_projects, run_id, append=(pages_scraped > 1)
+                            )
+
+                    if page_num % 10 == 0:
+                        logger.info(
+                            "Progress | district=%s | page=%d/%d | collected=%d | failed=%d",
+                            district_name, page_num, end_page, len(all_projects), len(all_failed),
+                        )
 
         except KeyboardInterrupt:
             logger.warning("Collection interrupted by user. Saving partial results...")
@@ -191,9 +196,10 @@ class MahareraCollector:
         logger.info("Collection complete: %s", result)
         return result
 
-    def _determine_total_pages(self) -> Optional[int]:
-        """Fetch page 1 to determine how many pages exist. Returns None if detection fails."""
-        response = self._http.get(_LIST_URL, params={**LIST_PAGE_FIXED_PARAMS, "page": 1})
+    def _determine_total_pages(self, district_id: int = 0) -> Optional[int]:
+        """Fetch page 1 (for the given district filter) to determine how many
+        pages exist. Returns None if detection fails."""
+        response = self._http.get(_LIST_URL, params=build_list_page_params(1, district_id))
         total = self._parser.extract_total_pages(response.text)
         if total is None:
             logger.warning("Could not determine total pages from pagination HTML.")
@@ -201,20 +207,19 @@ class MahareraCollector:
         logger.info("Total pages: %d", total)
         return total
 
-    def _fetch_list_page(self, page_num: int) -> list[dict]:
-        """Fetch and parse one list page. Returns a list of project stubs."""
+    def _fetch_list_page(self, page_num: int, district_id: int = 0) -> list[dict]:
+        """Fetch and parse one list page (optionally filtered to one district).
+        Returns a list of project stubs."""
         try:
             # MAHARERA's own pagination is 1-indexed, and requires the full set of
             # search filter params (even empty) alongside `page=` or it silently
             # ignores the page param and always returns page 1.
-            response = self._http.get(
-                _LIST_URL, params={**LIST_PAGE_FIXED_PARAMS, "page": page_num}
-            )
+            response = self._http.get(_LIST_URL, params=build_list_page_params(page_num, district_id))
             stubs = self._parser.parse_list_page(response.text)
-            logger.debug("Page %d: %d stubs parsed", page_num, len(stubs))
+            logger.debug("Page %d (district=%d): %d stubs parsed", page_num, district_id, len(stubs))
             return stubs
         except ScraperHTTPError as exc:
-            logger.warning("Failed to fetch list page %d: %s", page_num, exc)
+            logger.warning("Failed to fetch list page %d (district=%d): %s", page_num, district_id, exc)
             return []
 
     def _fetch_detail(self, stub: dict) -> Optional[RawProject]:
