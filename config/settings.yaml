@@ -15,19 +15,6 @@ storage:
   json_enabled: true
   csv_enabled: true
 
-cleaner:
-  raw_input_dir: "output/raw"
-  clean_output_dir: "output/clean"
-  json_enabled: true
-  csv_enabled: true
-  # Date formats to attempt in order; first match wins
-  date_formats:
-    - "%Y-%m-%d"
-    - "%d/%m/%Y"
-    - "%d-%m-%Y"
-    - "%Y-%m-%dT%H:%M:%S"
-    - "%Y-%m-%dT%H:%M:%S.%f"
-
 logging:
   log_dir: "logs"
   log_file: "scraper.log"
